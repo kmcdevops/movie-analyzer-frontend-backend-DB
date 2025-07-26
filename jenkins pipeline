@@ -1,0 +1,77 @@
+pipeline {
+    agent any
+
+    environment {
+        REPO_URL = 'https://github.com/kmcdevops/movie-analyzer-project.git'
+        APP_DIR = '/home/ubuntu/movie-analyzer-project'
+    }
+
+    stages {
+        stage('Clone Repository') {
+            steps {
+                dir("${APP_DIR}") {
+                    deleteDir()
+                    git branch: 'master', url: "${REPO_URL}"
+                }
+            }
+        }
+
+        stage('Build Frontend') {
+            steps {
+                dir("${APP_DIR}/frontend") {
+                    sh 'npm install'
+                    sh 'npm run build'
+                }
+            }
+        }
+
+        stage('Build Backend') {
+            steps {
+                dir("${APP_DIR}/backend") {
+                    sh 'npm install'
+                }
+            }
+        }
+
+        stage('Build Model') {
+            steps {
+                dir("${APP_DIR}/model") {
+                    sh 'pip3 install -r requirements.txt'
+                }
+            }
+        }
+
+        stage('Deploy Frontend') {
+            steps {
+                sh '''
+                    sudo rm -rf /var/www/html/*
+                    sudo cp -r ${APP_DIR}/frontend/build/* /var/www/html/
+                '''
+            }
+        }
+
+        stage('Run Backend') {
+            steps {
+                sh '''
+                    pkill -f "node backend/app.js" || true
+                    nohup node ${APP_DIR}/backend/app.js > backend.log 2>&1 &
+                '''
+            }
+        }
+
+        stage('Run Model') {
+            steps {
+                sh '''
+                    pkill -f "python3 model/app.py" || true
+                    nohup python3 ${APP_DIR}/model/app.py > model.log 2>&1 &
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '🎉 Movie Analyzer deployed successfully!'
+        }
+    }
+}
