@@ -2,25 +2,61 @@ pipeline {
     agent any
 
     environment {
-        REPO_URL = 'https://github.com/kmcdevops/movie-analyzer-project.git'
-        APP_DIR = '/home/ubuntu/movie-analyzer-project'
+        REPO_URL = 'https://github.com/kmcdevops/movie-analyzer-frontend-backend-DB.git'
+        APP_DIR = "${env.WORKSPACE}/movie-analyzer-project"
     }
 
     stages {
         stage('Clone Repository') {
             steps {
+                deleteDir()
                 dir("${APP_DIR}") {
-                    deleteDir()
-                    git branch: 'master', url: "${REPO_URL}"
+                    git url: "${REPO_URL}", branch: 'main'
                 }
+                sh '''
+                    echo "✅ Repo cloned into: ${APP_DIR}"
+                    echo "🗂️ Directory structure:"
+                    ls -lR "${APP_DIR}"
+                '''
+            }
+        }
+
+        stage('Check Node and NPM') {
+            steps {
+                sh '''
+                    echo "🔍 Checking Node and NPM installations..."
+                    which node || echo "❌ node not found"
+                    node -v || echo "❌ node not installed"
+
+                    which npm || echo "❌ npm not found"
+                    npm -v || echo "❌ npm not installed"
+                '''
+            }
+        }
+
+        stage('Debug Repo Structure') {
+            steps {
+                sh '''
+                    echo "🔍 Printing all files under APP_DIR..."
+                    find "${APP_DIR}" -type f
+                '''
             }
         }
 
         stage('Build Frontend') {
             steps {
                 dir("${APP_DIR}/frontend") {
-                    sh 'npm install'
-                    sh 'npm run build'
+                    sh '''
+                        echo "📦 Running npm install..."
+                        if [ ! -f package.json ]; then
+                          echo "❌ package.json not found in frontend/"
+                          exit 1
+                        fi
+                        npm install
+
+                        echo "🏗️ Running npm build..."
+                        npm run build
+                    '''
                 }
             }
         }
@@ -28,7 +64,14 @@ pipeline {
         stage('Build Backend') {
             steps {
                 dir("${APP_DIR}/backend") {
-                    sh 'npm install'
+                    sh '''
+                        echo "📦 Installing backend dependencies..."
+                        if [ ! -f package.json ]; then
+                          echo "❌ package.json not found in backend/"
+                          exit 1
+                        fi
+                        npm install
+                    '''
                 }
             }
         }
@@ -36,7 +79,14 @@ pipeline {
         stage('Build Model') {
             steps {
                 dir("${APP_DIR}/model") {
-                    sh 'pip3 install -r requirements.txt'
+                    sh '''
+                        echo "🐍 Installing Python model dependencies..."
+                        if [ ! -f requirements.txt ]; then
+                          echo "❌ requirements.txt not found in model/"
+                          exit 1
+                        fi
+                        pip3 install -r requirements.txt
+                    '''
                 }
             }
         }
@@ -44,8 +94,9 @@ pipeline {
         stage('Deploy Frontend') {
             steps {
                 sh '''
+                    echo "🚀 Deploying frontend to /var/www/html..."
                     sudo rm -rf /var/www/html/*
-                    sudo cp -r ${APP_DIR}/frontend/build/* /var/www/html/
+                    sudo cp -r "${APP_DIR}/frontend/build/"* /var/www/html/
                 '''
             }
         }
@@ -53,8 +104,9 @@ pipeline {
         stage('Run Backend') {
             steps {
                 sh '''
+                    echo "🔄 Restarting backend server..."
                     pkill -f "node backend/app.js" || true
-                    nohup node ${APP_DIR}/backend/app.js > backend.log 2>&1 &
+                    nohup node "${APP_DIR}/backend/app.js" > backend.log 2>&1 &
                 '''
             }
         }
@@ -62,8 +114,9 @@ pipeline {
         stage('Run Model') {
             steps {
                 sh '''
+                    echo "🔄 Restarting Python model server..."
                     pkill -f "python3 model/app.py" || true
-                    nohup python3 ${APP_DIR}/model/app.py > model.log 2>&1 &
+                    nohup python3 "${APP_DIR}/model/app.py" > model.log 2>&1 &
                 '''
             }
         }
@@ -72,6 +125,9 @@ pipeline {
     post {
         success {
             echo '🎉 Movie Analyzer deployed successfully!'
+        }
+        failure {
+            echo '❌ Deployment failed. Please check the console logs.'
         }
     }
 }
